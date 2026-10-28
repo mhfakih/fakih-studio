@@ -1,54 +1,38 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
 export async function POST(request: Request) {
   try {
-    let body: unknown;
+    const { prompt } = await request.json();
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Request tidak valid' }, { status: 400 });
-    }
-
-    const prompt =
-      typeof body === 'object' && body !== null && 'prompt' in body
-        ? body.prompt
-        : undefined;
-
-    if (typeof prompt !== 'string' || !prompt.trim()) {
+    if (!prompt) {
       return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400 });
     }
 
-    // Menggunakan Pollinations API gratis (Text-to-Image)
-    const encodedPrompt = encodeURIComponent(prompt.trim());
+    // 1. Generate Gambar via Pollinations.ai
+    const encodedPrompt = encodeURIComponent(prompt);
     const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true`;
 
-    if (supabase) {
-      const { error } = await supabase.from('generation_history').insert({
-        prompt: prompt.trim(),
-        video_url: imageUrl,
-        status: 'completed',
-      });
+    // 2. Inisialisasi Supabase di dalam handler
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      if (error) {
-        return NextResponse.json(
-          { error: 'Gagal menyimpan riwayat media' },
-          { status: 500 },
-        );
-      }
+    if (supabaseUrl && supabaseKey && supabaseUrl.startsWith('http')) {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      await supabase.from('generation_history').insert([
+        {
+          prompt: prompt,
+          video_url: imageUrl,
+          status: 'completed',
+        },
+      ]);
     }
 
-    return NextResponse.json({
-      success: true,
-      videoUrl: imageUrl,
+    return NextResponse.json({ 
+      success: true, 
+      videoUrl: imageUrl 
     });
-  } catch {
+  } catch (error: any) {
     return NextResponse.json({ error: 'Gagal membuat media' }, { status: 500 });
   }
 }
